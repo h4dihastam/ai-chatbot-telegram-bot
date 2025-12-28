@@ -37,13 +37,13 @@ if GEMINI_KEY:
         # تلاش برای استفاده از system_instruction
         try:
             model = genai.GenerativeModel(
-                'gemini-1.5-flash',
+                'gemini-pro',  # تغییر به gemini-pro
                 system_instruction=system_msg
             )
             logger.info("Gemini model initialized successfully with system instruction")
         except TypeError:
             # اگر نسخه قدیمی بود، بدون system_instruction
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-pro')
             logger.info("Gemini model initialized (without system instruction support)")
             
     except Exception as e:
