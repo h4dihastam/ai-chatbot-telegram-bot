@@ -1,8 +1,11 @@
 import os
 import logging
+import time
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
 import google.generativeai as genai
+from flask import Flask
+from threading import Thread
 
 # تنظیمات لاگ
 logging.basicConfig(
@@ -17,11 +20,7 @@ GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
 # تنظیمات Gemini
 model = None
-if GEMINI_KEY:
-    try:
-        genai.configure(api_key=GEMINI_KEY)
-        
-        system_instruction = """تو یک دستیار هوشمند فارسی‌زبان هستی که توسط محمدحسین تاجیک ساخته شده‌ای.
+system_msg = """تو یک دستیار هوشمند فارسی‌زبان هستی که توسط محمدحسین تاجیک ساخته شده‌ای.
 وظیفه اصلی‌ات کمک به دانشجویان در زمینه‌های مختلف است:
 - پاسخ به سوالات درسی و تحصیلی
 - کمک در حل تمرین‌ها و پروژه‌ها
@@ -30,12 +29,23 @@ if GEMINI_KEY:
 
 اگر کسی پرسید چه کسی تو را ساخته، بگو: "من توسط محمدحسین تاجیک ساخته شدم."
 همیشه با لحنی دوستانه، محترمانه و حمایتی پاسخ بده."""
+
+if GEMINI_KEY:
+    try:
+        genai.configure(api_key=GEMINI_KEY)
         
-        model = genai.GenerativeModel(
-            'gemini-1.5-flash',
-            system_instruction=system_instruction
-        )
-        logger.info("Gemini model initialized successfully")
+        # تلاش برای استفاده از system_instruction
+        try:
+            model = genai.GenerativeModel(
+                'gemini-1.5-flash',
+                system_instruction=system_msg
+            )
+            logger.info("Gemini model initialized successfully with system instruction")
+        except TypeError:
+            # اگر نسخه قدیمی بود، بدون system_instruction
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            logger.info("Gemini model initialized (without system instruction support)")
+            
     except Exception as e:
         logger.error(f"Error initializing Gemini: {e}")
 else:
@@ -101,7 +111,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         # ارسال پیام به Gemini
-        response = model.generate_content(user_message)
+        # اگر model بدون system_instruction هست، پیام سیستم رو اضافه می‌کنیم
+        full_message = f"{system_msg}\n\nسوال کاربر: {user_message}" if not hasattr(model, '_system_instruction') else user_message
+        
+        response = model.generate_content(full_message)
         
         # بررسی ایمنی پاسخ
         if response.candidates and response.candidates[0].finish_reason.name == 'SAFETY':
@@ -133,11 +146,34 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """مدیریت خطاها"""
     logger.error(f"Update {update} caused error {context.error}")
 
+# وب‌سرور ساده برای Render
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "✅ Telegram Bot is running!", 200
+
+@app.route('/health')
+def health():
+    return {"status": "ok", "bot": "running"}, 200
+
+def run_flask():
+    """اجرای Flask در thread جداگانه"""
+    port = int(os.getenv('PORT', 10000))
+    logger.info(f"Starting Flask server on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
 def main():
     """تابع اصلی برای اجرای ربات"""
     if not BOT_TOKEN:
         logger.error("TELEGRAM_BOT_TOKEN not found!")
         return
+    
+    # شروع Flask در Thread جداگانه (برای Render)
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logger.info("Flask thread started, waiting for server to be ready...")
+    time.sleep(2)  # صبر برای شروع Flask
     
     # ساخت اپلیکیشن
     application = ApplicationBuilder().token(BOT_TOKEN).build()
