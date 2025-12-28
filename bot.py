@@ -3,7 +3,8 @@ import logging
 import time
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from flask import Flask
 from threading import Thread
 
@@ -19,7 +20,7 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GEMINI_KEY = os.getenv("GEMINI_API_KEY")
 
 # تنظیمات Gemini
-model = None
+client = None
 system_msg = """تو یک دستیار هوشمند فارسی‌زبان هستی که توسط محمدحسین تاجیک ساخته شده‌ای.
 وظیفه اصلی‌ات کمک به دانشجویان در زمینه‌های مختلف است:
 - پاسخ به سوالات درسی و تحصیلی
@@ -32,20 +33,8 @@ system_msg = """تو یک دستیار هوشمند فارسی‌زبان هست
 
 if GEMINI_KEY:
     try:
-        genai.configure(api_key=GEMINI_KEY)
-        
-        # تلاش برای استفاده از system_instruction
-        try:
-            model = genai.GenerativeModel(
-                'gemini-pro',  # بازگشت به gemini-pro (پایدار و بدون محدودیت)
-                system_instruction=system_msg
-            )
-            logger.info("Gemini Pro model initialized successfully with system instruction")
-        except TypeError:
-            # اگر نسخه قدیمی بود، بدون system_instruction
-            model = genai.GenerativeModel('gemini-pro')
-            logger.info("Gemini model initialized (without system instruction support)")
-            
+        client = genai.Client(api_key=GEMINI_KEY)
+        logger.info("Gemini client initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing Gemini: {e}")
 else:
@@ -102,7 +91,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         action="typing"
     )
     
-    if not model:
+    if not client:
         await update.message.reply_text(
             "❌ متأسفانه سرویس هوش مصنوعی در دسترس نیست.\n"
             "لطفاً بعداً تلاش کنید."
@@ -110,18 +99,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        # ارسال پیام به Gemini
-        # اگر model بدون system_instruction هست، پیام سیستم رو اضافه می‌کنیم
-        full_message = f"{system_msg}\n\nسوال کاربر: {user_message}" if not hasattr(model, '_system_instruction') else user_message
+        # ارسال پیام به Gemini با system instruction
+        full_prompt = f"{system_msg}\n\nسوال کاربر: {user_message}"
         
-        response = model.generate_content(full_message)
-        
-        # بررسی ایمنی پاسخ
-        if response.candidates and response.candidates[0].finish_reason.name == 'SAFETY':
-            await update.message.reply_text(
-                "⚠️ متأسفم، به دلیل قوانین ایمنی نمی‌توانم به این پیام پاسخ دهم."
-            )
-            return
+        response = client.models.generate_content(
+            model='gemini-2.0-flash-exp',
+            contents=full_prompt
+        )
         
         # ارسال پاسخ
         reply_text = response.text.strip()
