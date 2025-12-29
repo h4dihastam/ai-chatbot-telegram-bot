@@ -34,13 +34,23 @@ if GAPGPT_API_KEY:
     try:
         client = OpenAI(
             base_url='https://api.gapgpt.app/v1',
-            api_key=GAPGPT_API_KEY
+            api_key=GAPGPT_API_KEY,
+            timeout=30.0,
+            max_retries=2
         )
-        logger.info("GapGPT client initialized successfully")
+        # تست اتصال
+        test_response = client.chat.completions.create(
+            model="gemma-3-27b-it",
+            messages=[{"role": "user", "content": "سلام"}],
+            max_tokens=10
+        )
+        logger.info("GapGPT client initialized and tested successfully")
     except Exception as e:
         logger.error(f"Error initializing GapGPT: {e}")
+        client = None
 else:
     logger.error("GAPGPT_API_KEY not found!")
+    client = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """پیام خوش‌آمدگویی"""
