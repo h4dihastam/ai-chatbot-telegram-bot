@@ -38,13 +38,13 @@ if GAPGPT_API_KEY:
             timeout=30.0,
             max_retries=2
         )
-        # تست اتصال
+        # تست اتصال با ارزان‌ترین مدل
         test_response = client.chat.completions.create(
-            model="gemini-2.0-flash-lite",
+            model="grok-3-mini",
             messages=[{"role": "user", "content": "سلام"}],
             max_tokens=10
         )
-        logger.info("GapGPT client initialized and tested successfully")
+        logger.info("GapGPT client initialized and tested successfully with grok-3-mini")
     except Exception as e:
         logger.error(f"Error initializing GapGPT: {e}")
         client = None
@@ -52,140 +52,17 @@ else:
     logger.error("GAPGPT_API_KEY not found!")
     client = None
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پیام خوش‌آمدگویی"""
-    user_name = update.effective_user.first_name
-    welcome_text = f"""سلام {user_name} عزیز! 👋
-
-من توسط محمدحسین تاجیک نوشته شدم و یک دستیار هوشمند برای کمک به دانشجویان هستم.
-
-💡 از من می‌توانید:
-• درباره دروس خود سوال بپرسید
-• کمک در حل تمرین‌ها و پروژه‌ها
-• یادگیری برنامه‌نویسی
-• راهنمایی تحصیلی
-
-📌 دستورات موجود:
-/start - شروع مجدد ربات
-/help - راهنمای استفاده
-
-سوالات درسی یا هر سوال دیگری داری بپرس! 📚✨"""
-    
-    await update.message.reply_text(welcome_text)
-
-async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """راهنمای استفاده"""
-    help_text = """📚 راهنمای استفاده:
-
-🔹 برای استفاده از ربات، کافیست سوال یا پیام خود را بنویسید
-🔹 می‌توانید از من در زمینه‌های مختلف سوال بپرسید
-🔹 پاسخ‌ها با استفاده از هوش مصنوعی Gemma تولید می‌شوند
-
-مثال‌ها:
-• Python چیست؟
-• یک شعر زیبا بگو
-• کمکم کن یک برنامه بنویسم
-
-سوال خود را بپرسید! 💭"""
-    
-    await update.message.reply_text(help_text)
+# بقیه کد دقیقاً مثل قبل (start, help, handle_message و ...) 
+# فقط در handle_message مدل رو به grok-3-mini تغییر بده:
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پردازش پیام‌های کاربر"""
-    user_message = update.message.text
-    user_name = update.effective_user.first_name
-    
-    logger.info(f"Message from {user_name}: {user_message}")
-    
-    # نمایش وضعیت تایپ
-    await context.bot.send_chat_action(
-        chat_id=update.effective_chat.id,
-        action="typing"
-    )
-    
-    if not client:
-        await update.message.reply_text(
-            "❌ متأسفانه سرویس هوش مصنوعی در دسترس نیست.\n"
-            "لطفاً بعداً تلاش کنید."
-        )
-        return
-    
+    # ... (بقیه کد همان قبلی)
     try:
-        # ارسال پیام به GapGPT API
         response = client.chat.completions.create(
-            model="gemini-2.0-flash-lite",
+            model="grok-3-mini",  # <--- اینجا
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_message}
             ]
         )
-        
-        # دریافت پاسخ
-        reply_text = response.choices[0].message.content.strip()
-        
-        # تقسیم پیام‌های بلند (حداکثر 4096 کاراکتر در تلگرام)
-        if len(reply_text) > 4096:
-            for i in range(0, len(reply_text), 4096):
-                await update.message.reply_text(reply_text[i:i+4096])
-        else:
-            await update.message.reply_text(reply_text)
-        
-        logger.info(f"Response sent to {user_name}")
-        
-    except Exception as e:
-        logger.error(f"Error processing message: {e}")
-        await update.message.reply_text(
-            "❌ متأسفانه در پردازش پیام شما مشکلی پیش آمد.\n"
-            "لطفاً دوباره تلاش کنید."
-        )
-
-async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """مدیریت خطاها"""
-    logger.error(f"Update {update} caused error {context.error}")
-
-# وب‌سرور ساده برای Render
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "✅ Telegram Bot is running!", 200
-
-@app.route('/health')
-def health():
-    return {"status": "ok", "bot": "running"}, 200
-
-def run_flask():
-    """اجرای Flask در thread جداگانه"""
-    port = int(os.getenv('PORT', 10000))
-    logger.info(f"Starting Flask server on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
-
-def main():
-    """تابع اصلی برای اجرای ربات"""
-    if not BOT_TOKEN:
-        logger.error("TELEGRAM_BOT_TOKEN not found!")
-        return
-    
-    # شروع Flask در Thread جداگانه (برای Render)
-    flask_thread = Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    logger.info("Flask thread started, waiting for server to be ready...")
-    time.sleep(2)  # صبر برای شروع Flask
-    
-    # ساخت اپلیکیشن
-    application = ApplicationBuilder().token(BOT_TOKEN).build()
-    
-    # اضافه کردن هندلرها
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("help", help_command))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-    
-    # اضافه کردن هندلر خطا
-    application.add_error_handler(error_handler)
-    
-    # اجرای ربات
-    logger.info("Bot is starting...")
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-if __name__ == '__main__':
-    main()
+        # ... (بقیه همون قبلی)
