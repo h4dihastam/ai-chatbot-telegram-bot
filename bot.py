@@ -3,8 +3,7 @@ import logging
 import time
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from google import genai
-from google.genai import types
+from openai import OpenAI
 from flask import Flask
 from threading import Thread
 
@@ -17,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 # دریافت متغیرهای محیطی
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-GEMINI_KEY = os.getenv("GEMINI_API_KEY")
+GAPGPT_API_KEY = os.getenv("GAPGPT_API_KEY")
 
-# تنظیمات Gemini
+# تنظیمات GapGPT
 client = None
 system_msg = """تو یک دستیار هوشمند فارسی‌زبان هستی که توسط محمدحسین تاجیک ساخته شده‌ای.
 وظیفه اصلی‌ات کمک به دانشجویان در زمینه‌های مختلف است:
@@ -31,14 +30,17 @@ system_msg = """تو یک دستیار هوشمند فارسی‌زبان هست
 اگر کسی پرسید چه کسی تو را ساخته، بگو: "من توسط محمدحسین تاجیک ساخته شدم."
 همیشه با لحنی دوستانه، محترمانه و حمایتی پاسخ بده."""
 
-if GEMINI_KEY:
+if GAPGPT_API_KEY:
     try:
-        client = genai.Client(api_key=GEMINI_KEY)
-        logger.info("Gemini client initialized successfully")
+        client = OpenAI(
+            base_url='https://api.gapgpt.app/v1',
+            api_key=GAPGPT_API_KEY
+        )
+        logger.info("GapGPT client initialized successfully")
     except Exception as e:
-        logger.error(f"Error initializing Gemini: {e}")
+        logger.error(f"Error initializing GapGPT: {e}")
 else:
-    logger.error("GEMINI_API_KEY not found!")
+    logger.error("GAPGPT_API_KEY not found!")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """پیام خوش‌آمدگویی"""
@@ -67,7 +69,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 🔹 برای استفاده از ربات، کافیست سوال یا پیام خود را بنویسید
 🔹 می‌توانید از من در زمینه‌های مختلف سوال بپرسید
-🔹 پاسخ‌ها با استفاده از هوش مصنوعی Gemini تولید می‌شوند
+🔹 پاسخ‌ها با استفاده از هوش مصنوعی Gemma تولید می‌شوند
 
 مثال‌ها:
 • Python چیست؟
@@ -99,16 +101,17 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     try:
-        # ارسال پیام به Gemini با system instruction
-        full_prompt = f"{system_msg}\n\nسوال کاربر: {user_message}"
-        
-        response = client.models.generate_content(
-            model='gemini-2.0-flash-exp',
-            contents=full_prompt
+        # ارسال پیام به GapGPT API
+        response = client.chat.completions.create(
+            model="gemma-3-27b-it",
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_message}
+            ]
         )
         
-        # ارسال پاسخ
-        reply_text = response.text.strip()
+        # دریافت پاسخ
+        reply_text = response.choices[0].message.content.strip()
         
         # تقسیم پیام‌های بلند (حداکثر 4096 کاراکتر در تلگرام)
         if len(reply_text) > 4096:
