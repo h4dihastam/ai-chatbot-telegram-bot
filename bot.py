@@ -40,7 +40,7 @@ if GAPGPT_API_KEY:
         )
         # تست اتصال
         test_response = client.chat.completions.create(
-            model="gemma-3-27b-it",
+            model="gemini-2.0-flash-lite",
             messages=[{"role": "user", "content": "سلام"}],
             max_tokens=10
         )
@@ -113,7 +113,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # ارسال پیام به GapGPT API
         response = client.chat.completions.create(
-            model="gemma-3-27b-it",
+            model="gemini-2.0-flash-lite",
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_message}
