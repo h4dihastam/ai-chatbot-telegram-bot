@@ -1,54 +1,176 @@
 import os
 import logging
-from dotenv import load_dotenv
+import time
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes
-from orchestrator import get_reply_user
+from openai import OpenAI
+from flask import Flask
+from threading import Thread
 
-# Load credentials
-load_dotenv()
-BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-
-# Setup logging
+# تنظیمات لاگ
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
+logger = logging.getLogger(__name__)
+
+# دریافت متغیرهای محیطی
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+GAPGPT_API_KEY = os.getenv("GAPGPT_API_KEY")
+
+# تنظیمات GapGPT
+client = None
+system_msg = """تو یک دستیار هوشمند فارسی‌زبان هستی که توسط محمدحسین تاجیک ساخته شده‌ای.
+وظیفه اصلی‌ات کمک به دانشجویان در زمینه‌های مختلف است:
+- پاسخ به سوالات درسی و تحصیلی
+- کمک در حل تمرین‌ها و پروژه‌ها
+- کمک در برنامه‌نویسی
+- راهنمایی تحصیلی
+
+اگر کسی پرسید چه کسی تو را ساخته، بگو: "من توسط محمدحسین تاجیک ساخته شدم."
+همیشه با لحنی دوستانه، محترمانه و حمایتی پاسخ بده."""
+
+if GAPGPT_API_KEY:
+    try:
+        client = OpenAI(
+            base_url='https://api.gapgpt.app/v1',
+            api_key=GAPGPT_API_KEY,
+            timeout=30.0,
+            max_retries=2
+        )
+        # تست اتصال با ارزان‌ترین مدل
+        test_response = client.chat.completions.create(
+            model="gpt-5-nano",  # ارزان‌ترین مدل: $0.050-$0.40
+            messages=[{"role": "user", "content": "سلام"}],
+            max_tokens=10
+        )
+        logger.info(f"GapGPT initialized successfully: {test_response.choices[0].message.content}")
+    except Exception as e:
+        logger.error(f"Error initializing GapGPT: {e}")
+        client = None
+else:
+    logger.error("GAPGPT_API_KEY not found!")
+    client = None
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Answers the /start command."""
     user_name = update.effective_user.first_name
-    welcome_text = (
-        f"سلام {user_name} عزیز! 😊\n"
-        "من دستیار هوشمند دانشجویی هستم که توسط محمدحسین تاجیک طراحی شده‌ام.\n"
-        "هر سوال درسی یا برنامه‌نویسی داری از من بپرس."
-    )
+    welcome_text = f"""سلام {user_name} عزیز! 👋
+
+من توسط محمدحسین تاجیک نوشته شدم و یک دستیار هوشمند برای کمک به دانشجویان هستم.
+
+💡 از من می‌توانید:
+• درباره دروس خود سوال بپرسید
+• کمک در حل تمرین‌ها و پروژه‌ها
+• یادگیری برنامه‌نویسی
+• راهنمایی تحصیلی
+
+📌 دستورات موجود:
+/start - شروع مجدد ربات
+/help - راهنمای استفاده
+
+سوالات درسی یا هر سوال دیگری داری بپرس! 📚✨"""
+    
     await update.message.reply_text(welcome_text)
 
-async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handles incoming text messages from users."""
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = """📚 راهنمای استفاده:
+
+🔹 برای استفاده از ربات، کافیست سوال یا پیام خود را بنویسید
+🔹 پاسخ‌ها با هوش مصنوعی پیشرفته تولید می‌شوند
+
+مثال‌ها:
+• Python چیست؟
+• یک شعر زیبا بگو
+• کمکم کن یک برنامه بنویسم
+
+سوال خود را بپرسید! 💭"""
+    
+    await update.message.reply_text(help_text)
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_message = update.message.text
+    user_name = update.effective_user.first_name
     
-    # Show "typing..." status in Telegram while AI generates the answer
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+    logger.info(f"Message from {user_name}: {user_message}")
     
-    # Get reply from our AI orchestrator
-    ai_response = get_reply_user(user_message)
+    await context.bot.send_chat_action(
+        chat_id=update.effective_chat.id,
+        action="typing"
+    )
     
-    # Send the response back to user
-    await update.message.reply_text(ai_response)
+    if not client:
+        await update.message.reply_text(
+            "❌ متأسفانه سرویس هوش مصنوعی در دسترس نیست.\n"
+            "لطفاً بعداً تلاش کنید."
+        )
+        return
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-5-nano",  # ارزان‌ترین مدل
+            messages=[
+                {"role": "system", "content": system_msg},
+                {"role": "user", "content": user_message}
+            ],
+            max_tokens=2000,
+            temperature=0.7
+        )
+        
+        reply_text = response.choices[0].message.content.strip()
+        
+        if len(reply_text) > 4096:
+            for i in range(0, len(reply_text), 4096):
+                await update.message.reply_text(reply_text[i:i+4096])
+        else:
+            await update.message.reply_text(reply_text)
+        
+        logger.info(f"Response sent to {user_name}")
+        
+    except Exception as e:
+        logger.error(f"Error processing message: {e}")
+        await update.message.reply_text(
+            f"❌ متأسفانه در پردازش پیام شما مشکلی پیش آمد:\n{str(e)}\n"
+            "لطفاً دوباره تلاش کنید."
+        )
+
+async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    logger.error(f"Update {update} caused error {context.error}")
+
+# وب‌سرور برای Render
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "✅ Telegram Bot is running!", 200
+
+@app.route('/health')
+def health():
+    return {"status": "ok", "bot": "running"}, 200
+
+def run_flask():
+    port = int(os.getenv('PORT', 10000))
+    logger.info(f"Starting Flask server on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+def main():
+    if not BOT_TOKEN:
+        logger.error("TELEGRAM_BOT_TOKEN not found!")
+        return
+    
+    flask_thread = Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logger.info("Flask thread started, waiting for server to be ready...")
+    time.sleep(2)
+    
+    application = ApplicationBuilder().token(BOT_TOKEN).build()
+    
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CommandHandler("help", help_command))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    application.add_error_handler(error_handler)
+    
+    logger.info("Bot is starting...")
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == '__main__':
-    if not BOT_TOKEN:
-        print("Error: TELEGRAM_BOT_TOKEN not found in .env file!")
-    else:
-        # Create the application
-        application = ApplicationBuilder().token(BOT_TOKEN).build()
-        
-        # Add handlers
-        application.add_handler(CommandHandler("start", start))
-        application.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_text))
-        
-        print("Bot is starting... Press Ctrl+C to stop.")
-        # Start the bot
-        application.run_polling()
+    main()
