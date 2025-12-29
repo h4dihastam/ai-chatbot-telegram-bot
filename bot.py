@@ -40,7 +40,7 @@ if GAPGPT_API_KEY:
         )
         # تست اتصال با مدل ارزان و موجود
         test_response = client.chat.completions.create(
-            model="grok-3-mini",
+            model="gpt-5-mini",
             messages=[{"role": "user", "content": "سلام"}],
             max_tokens=10
         )
@@ -107,7 +107,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         response = client.chat.completions.create(
-            model="grok-3-mini",  # ارزان‌ترین و موجود
+            model="gpt-5-mini",  # ارزان‌ترین و موجود
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_message}
