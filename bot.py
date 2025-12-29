@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 GAPGPT_API_KEY = os.getenv("GAPGPT_API_KEY")
 
-# تنظیمات GapGPT - ارزان‌ترین مدل: grok-3-mini
+# تنظیمات GapGPT
 client = None
 system_msg = """تو یک دستیار هوشمند فارسی‌زبان هستی که توسط محمدحسین تاجیک ساخته شده‌ای.
 وظیفه اصلی‌ات کمک به دانشجویان در زمینه‌های مختلف است:
@@ -38,13 +38,13 @@ if GAPGPT_API_KEY:
             timeout=30.0,
             max_retries=2
         )
-        # تست اتصال با مدل ارزان و موجود
+        # تست اتصال با ارزان‌ترین مدل
         test_response = client.chat.completions.create(
-            model="gpt-5-mini",
+            model="gpt-5-nano",  # ارزان‌ترین مدل: $0.050-$0.40
             messages=[{"role": "user", "content": "سلام"}],
             max_tokens=10
         )
-        logger.info("GapGPT client initialized and tested successfully with grok-3-mini")
+        logger.info(f"GapGPT initialized successfully: {test_response.choices[0].message.content}")
     except Exception as e:
         logger.error(f"Error initializing GapGPT: {e}")
         client = None
@@ -76,7 +76,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = """📚 راهنمای استفاده:
 
 🔹 برای استفاده از ربات، کافیست سوال یا پیام خود را بنویسید
-🔹 پاسخ‌ها با هوش مصنوعی پیشرفته و ارزان تولید می‌شوند
+🔹 پاسخ‌ها با هوش مصنوعی پیشرفته تولید می‌شوند
 
 مثال‌ها:
 • Python چیست؟
@@ -107,11 +107,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     try:
         response = client.chat.completions.create(
-            model="gpt-5-mini",  # ارزان‌ترین و موجود
+            model="gpt-5-nano",  # ارزان‌ترین مدل
             messages=[
                 {"role": "system", "content": system_msg},
                 {"role": "user", "content": user_message}
-            ]
+            ],
+            max_tokens=2000,
+            temperature=0.7
         )
         
         reply_text = response.choices[0].message.content.strip()
@@ -127,7 +129,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error processing message: {e}")
         await update.message.reply_text(
-            "❌ متأسفانه در پردازش پیام شما مشکلی پیش آمد.\n"
+            f"❌ متأسفانه در پردازش پیام شما مشکلی پیش آمد:\n{str(e)}\n"
             "لطفاً دوباره تلاش کنید."
         )
 
